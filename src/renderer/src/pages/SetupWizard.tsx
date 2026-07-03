@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import {
+  AlertTriangle,
   ArrowLeft,
   ArrowRight,
   Check,
@@ -9,6 +10,7 @@ import {
   HardDrive,
   Waves
 } from 'lucide-react'
+import type { DataDirCheckResult } from '@shared/types'
 import { useApp } from '@renderer/lib/store'
 import { Field } from '@renderer/components/ui'
 
@@ -42,16 +44,75 @@ export function SetupWizard({ onComplete }: { onComplete: () => Promise<void> })
   const [staffName, setStaffName] = useState('')
   const [loadDemoData, setLoadDemoData] = useState(true)
 
+  // Existing-database protection: before we let setup finish, we check
+  // whether the chosen folder already has an OSEA Dive Manager database so
+  // we can warn instead of silently reusing (and overwriting the settings
+  // of) someone else's data.
+  const [existingInfo, setExistingInfo] = useState<DataDirCheckResult | null>(null)
+  const [checkingDir, setCheckingDir] = useState(false)
+
   useEffect(() => {
-    void window.osea.app.getDefaultDataDir().then((dir) => {
+    void window.osea.app.getDefaultDataDir().then(async (dir) => {
       setDefaultDir(dir)
       setDataDir(dir)
+      setCheckingDir(true)
+      const found = await checkFolder(dir)
+      setCheckingDir(false)
+      setExistingInfo(found)
     })
   }, [])
 
+  const checkFolder = async (dir: string): Promise<DataDirCheckResult | null> => {
+    try {
+      const result = await window.osea.app.checkDataDir(dir || null)
+      return result.exists ? result : null
+    } catch {
+      return null
+    }
+  }
+
   const chooseFolder = async (): Promise<void> => {
     const dir = await window.osea.app.chooseDirectory()
-    if (dir) setDataDir(dir)
+    if (!dir) return
+    setDataDir(dir)
+    setExistingInfo(null)
+    setCheckingDir(true)
+    const found = await checkFolder(dir)
+    setCheckingDir(false)
+    setExistingInfo(found)
+  }
+
+  const useDefaultFolder = async (): Promise<void> => {
+    setDataDir(defaultDir)
+    setExistingInfo(null)
+    setCheckingDir(true)
+    const found = await checkFolder(defaultDir)
+    setCheckingDir(false)
+    setExistingInfo(found)
+  }
+
+  const continueFromStorageStep = async (): Promise<void> => {
+    setCheckingDir(true)
+    const found = await checkFolder(dataDir)
+    setCheckingDir(false)
+    setExistingInfo(found)
+    if (!found) setStep(2)
+  }
+
+  const useExistingDatabase = async (): Promise<void> => {
+    setBusy(true)
+    try {
+      await window.osea.app.setup({
+        provider: 'sqlite',
+        dataDir: dataDir || null,
+        business: {},
+        loadDemoData: false
+      })
+      await onComplete()
+    } catch (err) {
+      toast('error', err instanceof Error ? err.message : 'Could not open the existing database.')
+      setBusy(false)
+    }
   }
 
   const finish = async (): Promise<void> => {
@@ -214,10 +275,51 @@ export function SetupWizard({ onComplete }: { onComplete: () => Promise<void> })
                   {defaultDir && dataDir !== defaultDir && (
                     <button
                       className="mt-2 text-xs text-ocean-600 hover:underline dark:text-ocean-300"
-                      onClick={() => setDataDir(defaultDir)}
+                      onClick={useDefaultFolder}
                     >
                       Use the default location instead
                     </button>
+                  )}
+
+                  {existingInfo && (
+                    <div className="mt-4 rounded-xl border-2 border-amber-400/60 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-500/40 dark:bg-amber-900/20 dark:text-amber-100">
+                      <div className="flex items-start gap-2.5 font-semibold">
+                        <AlertTriangle size={17} className="mt-0.5 shrink-0" />
+                        This folder already has an OSEA Dive Manager database.
+                      </div>
+                      <p className="mt-2 leading-relaxed">
+                        {existingInfo.businessName ? (
+                          <>
+                            It belongs to <strong>{existingInfo.businessName}</strong>.
+                          </>
+                        ) : (
+                          "OSEA Dive Manager couldn't read its business name, but the database file is present."
+                        )}{' '}
+                        {existingInfo.counts && (
+                          <>
+                            It already contains {existingInfo.counts.rental_assets ?? 0} rental assets,{' '}
+                            {existingInfo.counts.products ?? 0} products, {existingInfo.counts.sales ?? 0} sales and{' '}
+                            {existingInfo.counts.purchase_orders ?? 0} purchase orders.
+                          </>
+                        )}
+                      </p>
+                      <p className="mt-2">
+                        To protect this data, OSEA Dive Manager will not change its business name,
+                        currency, VAT rate or load demo data over it.
+                      </p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <button
+                          className="btn-primary !bg-amber-600 hover:!bg-amber-700"
+                          onClick={useExistingDatabase}
+                          disabled={busy}
+                        >
+                          {busy ? 'Opening…' : 'Use this existing database'}
+                        </button>
+                        <button className="btn-secondary" onClick={chooseFolder} disabled={busy}>
+                          Choose a different folder
+                        </button>
+                      </div>
+                    </div>
                   )}
                 </div>
               )}
@@ -320,10 +422,16 @@ export function SetupWizard({ onComplete }: { onComplete: () => Promise<void> })
             {step < 3 ? (
               <button
                 className="btn-primary"
-                onClick={() => setStep((s) => s + 1)}
-                disabled={step === 1 && storage === 'cloud'}
+                onClick={() => (step === 1 && storage === 'local' ? continueFromStorageStep() : setStep((s) => s + 1))}
+                disabled={(step === 1 && (storage === 'cloud' || existingInfo !== null)) || checkingDir}
               >
-                Continue <ArrowRight size={15} />
+                {checkingDir ? (
+                  'Checking…'
+                ) : (
+                  <>
+                    Continue <ArrowRight size={15} />
+                  </>
+                )}
               </button>
             ) : (
               <button className="btn-primary" onClick={finish} disabled={busy}>

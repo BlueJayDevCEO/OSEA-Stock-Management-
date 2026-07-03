@@ -1,3 +1,4 @@
+import Database from 'better-sqlite3'
 import { existsSync, mkdirSync } from 'fs'
 import { dirname } from 'path'
 import { SqliteDriver, type SqlDriver } from './driver'
@@ -13,6 +14,53 @@ export function openDatabase(dbPath: string): SqlDriver {
   migrate(driver)
   ensureDefaults(driver)
   return driver
+}
+
+export interface ExistingDatabasePreview {
+  businessName: string | null
+  counts: Record<string, number> | null
+}
+
+const PREVIEW_TABLES = ['rental_assets', 'products', 'sales', 'purchase_orders', 'suppliers']
+
+/**
+ * Read-only peek at a candidate database file, used by the Setup Wizard to
+ * detect and describe an existing database *before* opening it for real —
+ * so setup can warn the customer instead of silently reusing (and
+ * overwriting the settings of) someone else's data. Never creates a file:
+ * returns null if nothing exists at `dbPath` yet.
+ */
+export function previewDatabaseAt(dbPath: string): ExistingDatabasePreview | null {
+  if (!existsSync(dbPath)) return null
+  let probe: Database.Database | null = null
+  try {
+    probe = new Database(dbPath, { readonly: true, fileMustExist: true })
+    let businessName: string | null = null
+    try {
+      const row = probe.prepare("SELECT value FROM settings WHERE key = 'business'").get() as
+        | { value: string }
+        | undefined
+      businessName = row ? ((JSON.parse(row.value).businessName as string | undefined) ?? null) : null
+    } catch {
+      businessName = null
+    }
+    const counts: Record<string, number> = {}
+    for (const table of PREVIEW_TABLES) {
+      try {
+        const row = probe.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get() as { n: number } | undefined
+        counts[table] = row?.n ?? 0
+      } catch {
+        counts[table] = 0
+      }
+    }
+    return { businessName, counts }
+  } catch {
+    // File exists but isn't a readable OSEA database (corrupt, wrong format,
+    // locked). Still report it as "found" — just without a readable preview.
+    return { businessName: null, counts: null }
+  } finally {
+    probe?.close()
+  }
 }
 
 export function getDb(): SqlDriver {

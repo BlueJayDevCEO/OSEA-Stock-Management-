@@ -1,8 +1,9 @@
 import { BrowserWindow, app, dialog, ipcMain, shell } from 'electron'
 import { existsSync, mkdirSync, writeFileSync } from 'fs'
-import type { AppStatus, Result, SetupInput } from '@shared/types'
+import type { AppStatus, DataDirCheckResult, Result, SetupInput } from '@shared/types'
+import { shouldShowDeveloperTools } from '@shared/featureFlags'
 import { dbPathFor, defaultDataDir, loadConfig, saveConfig } from './config'
-import { isDbOpen, openDatabase, getDb } from './db'
+import { isDbOpen, openDatabase, getDb, previewDatabaseAt } from './db'
 import * as settingsRepo from './repositories/settings'
 import * as catalog from './repositories/catalog'
 import * as assets from './repositories/assets'
@@ -83,8 +84,32 @@ function getStatus(): AppStatus {
     dataDir: config?.dataDir ?? null,
     dbPath: config ? dbPathFor(config.dataDir) : null,
     provider: config?.provider ?? null,
-    version: app.getVersion()
+    version: app.getVersion(),
+    isPackaged: app.isPackaged
   }
+}
+
+/**
+ * Runs first-run (or re-run) setup. Exported standalone — not just registered
+ * as an IPC handler — so productionReadinessTest.ts can call it directly and
+ * prove the existing-database guard without faking IPC plumbing.
+ *
+ * Safety invariant: if a database file already exists at the target path,
+ * this NEVER applies `input.business` or seeds demo data over it, regardless
+ * of what the caller passes — the Setup Wizard is expected to have already
+ * warned the customer and offered "use existing" / "choose a different
+ * folder" before calling this at all (see checkDataDir / app:checkDataDir).
+ */
+export function performAppSetup(input: SetupInput): AppStatus {
+  const dataDir = input.dataDir && input.dataDir.trim() ? input.dataDir : defaultDataDir()
+  if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true })
+  const dbPath = dbPathFor(dataDir)
+  const dbAlreadyExisted = existsSync(dbPath)
+  openDatabase(dbPath)
+  saveConfig({ provider: 'sqlite', dataDir, configuredAt: new Date().toISOString() })
+  if (input.business && !dbAlreadyExisted) settingsRepo.updateSettings(input.business)
+  if (input.loadDemoData && !dbAlreadyExisted) seedDemoData()
+  return getStatus()
 }
 
 export function registerIpc(getWindow: () => BrowserWindow | null): void {
@@ -92,14 +117,19 @@ export function registerIpc(getWindow: () => BrowserWindow | null): void {
   handle('app:getStatus', () => getStatus())
   handle('app:getDefaultDataDir', () => defaultDataDir())
 
-  handle('app:setup', (input: SetupInput) => {
-    const dataDir = input.dataDir && input.dataDir.trim() ? input.dataDir : defaultDataDir()
-    if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true })
-    openDatabase(dbPathFor(dataDir))
-    saveConfig({ provider: 'sqlite', dataDir, configuredAt: new Date().toISOString() })
-    if (input.business) settingsRepo.updateSettings(input.business)
-    if (input.loadDemoData) seedDemoData()
-    return getStatus()
+  handle('app:setup', (input: SetupInput) => performAppSetup(input))
+
+  handle('app:checkDataDir', (dataDirInput: string | null) => {
+    const dataDir = dataDirInput && dataDirInput.trim() ? dataDirInput : defaultDataDir()
+    const dbPath = dbPathFor(dataDir)
+    const preview = previewDatabaseAt(dbPath)
+    const result: DataDirCheckResult = {
+      dbPath,
+      exists: preview !== null,
+      businessName: preview?.businessName ?? null,
+      counts: preview?.counts ?? null
+    }
+    return result
   })
 
   handle('app:chooseDirectory', async () => {
@@ -154,6 +184,7 @@ export function registerIpc(getWindow: () => BrowserWindow | null): void {
   })
 
   handle('app:getLastPrompt', async () => {
+    if (!shouldShowDeveloperTools(app.isPackaged)) return null
     try {
       const fs = require('fs')
       const path = require('path')
@@ -252,8 +283,23 @@ export function registerIpc(getWindow: () => BrowserWindow | null): void {
   handle('data:exportJson', dataAdmin.exportJson)
   handle('data:importJson', dataAdmin.importJson)
   handle('data:exportCsv', dataAdmin.exportCsv)
-  handle('data:runValidationSuite', dataAdmin.runValidationSuite)
-  handle('data:generateTestDataset', dataAdmin.generateTestDataset)
+  // Developer-only tooling (Settings → Developer Tools). Both shell out to
+  // dev scripts that don't exist in a packaged build — refuse outright there
+  // rather than fail obscurely for a customer. UI also hides the tab (see
+  // shouldShowDeveloperTools / SettingsPage.tsx); this is the belt-and-braces
+  // server-side guard.
+  handle('data:runValidationSuite', () => {
+    if (!shouldShowDeveloperTools(app.isPackaged)) {
+      throw new Error('Developer tools are not available in this build.')
+    }
+    return dataAdmin.runValidationSuite()
+  })
+  handle('data:generateTestDataset', (preset: 'small' | 'medium' | 'large') => {
+    if (!shouldShowDeveloperTools(app.isPackaged)) {
+      throw new Error('Developer tools are not available in this build.')
+    }
+    return dataAdmin.generateTestDataset(preset)
+  })
   handle('data:exportDemoDatabase', async () => {
     const win = getWindow()
     if (!win) return null

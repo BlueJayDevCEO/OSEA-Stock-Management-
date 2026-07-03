@@ -151,6 +151,17 @@ app.whenReady().then(async () => {
     return
   }
 
+  if (process.argv.includes('--production-readiness-test')) {
+    const { runProductionReadinessTest } = await import('./productionReadinessTest')
+    try {
+      await runProductionReadinessTest()
+    } catch (err) {
+      console.error(err instanceof Error ? err.message : err)
+      app.exit(1)
+    }
+    return
+  }
+
   if (migrationRuntimeTest) {
     migrationRuntimeDir = mkdtempSync(join(tmpdir(), 'osea-migration-runtime-'))
     const dataDir = join(migrationRuntimeDir, 'data')

@@ -17,6 +17,7 @@ const api: OseaApi = {
   app: {
     getStatus: () => call('app:getStatus'),
     getDefaultDataDir: () => call('app:getDefaultDataDir'),
+    checkDataDir: (dataDir) => call('app:checkDataDir', dataDir),
     setup: (input) => call('app:setup', input),
     chooseDirectory: () => call('app:chooseDirectory'),
     chooseSavePath: (defaultName, filterName, extensions) =>

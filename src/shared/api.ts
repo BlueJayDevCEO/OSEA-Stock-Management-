@@ -13,6 +13,7 @@ import type {
   CustomFieldType,
   CustomFieldValue,
   DashboardStats,
+  DataDirCheckResult,
   EquipmentType,
   ImportSummary,
   MovementType,
@@ -70,6 +71,7 @@ export interface OseaApi {
   app: {
     getStatus(): Promise<AppStatus>
     getDefaultDataDir(): Promise<string>
+    checkDataDir(dataDir: string | null): Promise<DataDirCheckResult>
     setup(input: SetupInput): Promise<AppStatus>
     chooseDirectory(): Promise<string | null>
     chooseSavePath(defaultName: string, filterName: string, extensions: string[]): Promise<string | null>

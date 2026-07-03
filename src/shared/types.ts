@@ -484,6 +484,8 @@ export interface AppStatus {
   dbPath: string | null
   provider: 'sqlite' | null
   version: string
+  /** True in a packaged/installed build — false for `electron-vite dev` and unpackaged runs. */
+  isPackaged: boolean
 }
 
 export interface SetupInput {
@@ -491,6 +493,20 @@ export interface SetupInput {
   dataDir: string | null // null = use default app-data location
   business: Partial<BusinessSettings>
   loadDemoData: boolean
+}
+
+/**
+ * Result of checking a candidate data folder before setup finishes. Lets the
+ * Setup Wizard warn the customer instead of silently opening (and overwriting
+ * the settings of) a database that's already there.
+ */
+export interface DataDirCheckResult {
+  dbPath: string
+  exists: boolean
+  /** Business name read from the existing database, if it could be opened. */
+  businessName: string | null
+  /** Row counts from the existing database, if it could be opened. */
+  counts: Record<string, number> | null
 }
 
 export interface BackupResult {

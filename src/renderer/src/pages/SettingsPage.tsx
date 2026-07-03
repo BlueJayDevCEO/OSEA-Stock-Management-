@@ -21,6 +21,7 @@ import type {
   EquipmentType,
   Supplier
 } from '@shared/types'
+import { shouldShowDeveloperTools } from '@shared/featureFlags'
 import { useApp } from '@renderer/lib/store'
 import { ConfirmDialog, Field, Modal, PageHeader } from '@renderer/components/ui'
 import { MigrationCentre } from '../components/MigrationCentre'
@@ -30,6 +31,20 @@ type Tab = 'business' | 'catalog' | 'fields' | 'suppliers' | 'data' | 'migration
 export function SettingsPage(): JSX.Element {
   const [params] = useSearchParams()
   const [tab, setTab] = useState<Tab>((params.get('tab') as Tab | null) ?? 'business')
+  // Developer Tools (test data generator, validation suite, prompt viewer) is
+  // build/QA tooling — it must never be reachable in a packaged customer
+  // build, even by URL/query-param, so this also gates the initial tab above.
+  const [showDeveloperTools, setShowDeveloperTools] = useState(false)
+
+  useEffect(() => {
+    void window.osea.app.getStatus().then((status) => {
+      setShowDeveloperTools(shouldShowDeveloperTools(status.isPackaged))
+    })
+  }, [])
+
+  useEffect(() => {
+    if (tab === 'developer' && !showDeveloperTools) setTab('business')
+  }, [tab, showDeveloperTools])
 
   return (
     <div className="animate-fade-in">
@@ -57,16 +72,18 @@ export function SettingsPage(): JSX.Element {
             {label}
           </button>
         ))}
-        <button
-          onClick={() => setTab('developer' as Tab)}
-          className={`-mb-px border-b-2 px-4 py-2.5 text-sm font-semibold ${
-            tab === 'developer'
-              ? 'border-orange-500 text-orange-700 dark:text-orange-300'
-              : 'border-transparent text-abyss-400 hover:text-abyss-700 dark:hover:text-abyss-200'
-          }`}
-        >
-          Developer Tools
-        </button>
+        {showDeveloperTools && (
+          <button
+            onClick={() => setTab('developer' as Tab)}
+            className={`-mb-px border-b-2 px-4 py-2.5 text-sm font-semibold ${
+              tab === 'developer'
+                ? 'border-orange-500 text-orange-700 dark:text-orange-300'
+                : 'border-transparent text-abyss-400 hover:text-abyss-700 dark:hover:text-abyss-200'
+            }`}
+          >
+            Developer Tools
+          </button>
+        )}
       </div>
 
       {tab === 'business' && <BusinessTab />}
@@ -75,7 +92,7 @@ export function SettingsPage(): JSX.Element {
       {tab === 'fields' && <FieldsTab />}
       {tab === 'data' && <DataTab />}
       {tab === 'migration' && <MigrationCentre />}
-      {tab === 'developer' && <DeveloperTab />}
+      {tab === 'developer' && showDeveloperTools && <DeveloperTab />}
     </div>
   )
 }

@@ -13,6 +13,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "start": "electron-vite preview",
     "smoke": "electron-vite build && electron out/main/index.js --smoke-test",
+    "test:production-readiness": "electron-vite build && electron out/main/index.js --production-readiness-test",
     "icon": "electron scripts/makeIcon.js",
     "dist": "electron-vite build && electron-builder",
     "dist:win": "electron-vite build && electron-builder --win",
