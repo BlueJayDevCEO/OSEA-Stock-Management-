@@ -18,7 +18,7 @@ import { useGlobalScanner } from '@renderer/lib/useScanner'
 import { SearchPalette } from './SearchPalette'
 import { ToastHost } from './ui'
 
-import logoPath from './assets/osea-logo.png'
+import logoPath from "../assets/osea-logo.png";
 
 const NAV = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
