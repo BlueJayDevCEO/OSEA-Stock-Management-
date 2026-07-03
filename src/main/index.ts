@@ -75,6 +75,17 @@ function createWindow(): void {
 app.whenReady().then(async () => {
   app.setAppUserModelId('com.osea.divemanager')
 
+  if (process.argv.includes('--migration-test')) {
+    const { runMigrationTest } = await import('./migrationTest')
+    try {
+      await runMigrationTest()
+    } catch (err) {
+      console.error(err instanceof Error ? err.message : err)
+      app.exit(1)
+    }
+    return
+  }
+
   if (process.argv.includes('--smoke-test')) {
     const { runSmokeTest } = await import('./smokeTest')
     try {

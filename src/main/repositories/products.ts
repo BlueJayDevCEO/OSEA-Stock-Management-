@@ -134,7 +134,7 @@ export function createProduct(input: ProductInput): Product {
   db.transaction(() => {
     id = newId()
     const ts = nowIso()
-    const sku = nextNumber(db, 'sku', settings.skuPrefix)
+    const sku = input.sku?.trim() || nextNumber(db, 'sku', settings.skuPrefix)
     db.run(
       `INSERT INTO products (
          id, sku, barcode, name, brand_id, category_id, supplier_id,

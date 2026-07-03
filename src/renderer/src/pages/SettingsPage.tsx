@@ -23,8 +23,9 @@ import type {
 } from '@shared/types'
 import { useApp } from '@renderer/lib/store'
 import { ConfirmDialog, Field, Modal, PageHeader } from '@renderer/components/ui'
+import { MigrationCentre } from '../components/MigrationCentre'
 
-type Tab = 'business' | 'catalog' | 'fields' | 'suppliers' | 'data' | 'developer'
+type Tab = 'business' | 'catalog' | 'fields' | 'suppliers' | 'data' | 'migration' | 'developer'
 
 export function SettingsPage(): JSX.Element {
   const [params] = useSearchParams()
@@ -40,7 +41,8 @@ export function SettingsPage(): JSX.Element {
             ['catalog', 'Categories & Types'],
             ['suppliers', 'Suppliers'],
             ['fields', 'Custom Fields'],
-            ['data', 'Data & Backups']
+            ['data', 'Data & Backups'],
+            ['migration', 'Migration Centre']
           ] as Array<[Tab, string]>
         ).map(([key, label]) => (
           <button
@@ -72,6 +74,7 @@ export function SettingsPage(): JSX.Element {
       {tab === 'suppliers' && <SuppliersTab />}
       {tab === 'fields' && <FieldsTab />}
       {tab === 'data' && <DataTab />}
+      {tab === 'migration' && <MigrationCentre />}
       {tab === 'developer' && <DeveloperTab />}
     </div>
   )

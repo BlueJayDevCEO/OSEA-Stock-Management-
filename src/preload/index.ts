@@ -22,6 +22,7 @@ const api: OseaApi = {
     chooseSavePath: (defaultName, filterName, extensions) =>
       call('app:chooseSavePath', defaultName, filterName, extensions),
     chooseFile: (filterName, extensions) => call('app:chooseFile', filterName, extensions),
+    chooseFiles: (filterName, extensions) => call('app:chooseFiles', filterName, extensions),
     showInFolder: (path) => call('app:showInFolder', path),
     printToPdf: (defaultName) => call('app:printToPdf', defaultName),
     print: () => call('app:print'),
@@ -111,6 +112,11 @@ const api: OseaApi = {
     generateTestDataset: (preset) => call('data:generateTestDataset', preset),
     exportDemoDatabase: () => call('data:exportDemoDatabase'),
     dbInfo: () => call('data:dbInfo')
+  },
+  migration: {
+    inspectFiles: (paths) => call('migration:inspectFiles', paths),
+    validateMapping: (fileId, entity, mapping) => call('migration:validateMapping', fileId, entity, mapping),
+    importData: (fileId, entity, mapping, skipDuplicates) => call('migration:importData', fileId, entity, mapping, skipDuplicates)
   }
 }
 

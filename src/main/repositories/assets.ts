@@ -155,7 +155,7 @@ export function createAsset(input: RentalAssetInput, quantity = 1): RentalAsset[
     for (let i = 0; i < count; i++) {
       const id = newId()
       const ts = nowIso()
-      const assetNumber = nextNumber(db, 'asset', settings.assetPrefix)
+      const assetNumber = input.assetNumber?.trim() || nextNumber(db, 'asset', settings.assetPrefix)
       db.run(
         `INSERT INTO rental_assets (
            id, asset_number, equipment_type_id, category_id, brand_id, supplier_id,

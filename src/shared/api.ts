@@ -36,6 +36,11 @@ import type {
   SetupInput,
   StockAdjustmentInput,
   StockMovement,
+  MigrationEntity,
+  MigrationFilePreview,
+  MigrationMapping,
+  ValidationResult,
+  ImportSummaryResult,
   Supplier
 } from './types'
 
@@ -69,6 +74,7 @@ export interface OseaApi {
     chooseDirectory(): Promise<string | null>
     chooseSavePath(defaultName: string, filterName: string, extensions: string[]): Promise<string | null>
     chooseFile(filterName: string, extensions: string[]): Promise<string | null>
+    chooseFiles(filterName: string, extensions: string[]): Promise<string[]>
     showInFolder(path: string): Promise<void>
     printToPdf(defaultName: string): Promise<string | null>
     print(): Promise<void>
@@ -165,6 +171,11 @@ export interface OseaApi {
     generateTestDataset(preset: 'small' | 'medium' | 'large'): Promise<{ path: string }>
     exportDemoDatabase(): Promise<{ path: string }>
     dbInfo(): Promise<{ path: string; counts: Record<string, number> }>
+  }
+  migration: {
+    inspectFiles(paths: string[]): Promise<MigrationFilePreview[]>
+    validateMapping(fileId: string, entity: MigrationEntity, mapping: MigrationMapping): Promise<ValidationResult>
+    importData(fileId: string, entity: MigrationEntity, mapping: MigrationMapping, skipDuplicates: boolean): Promise<ImportSummaryResult>
   }
 }
 

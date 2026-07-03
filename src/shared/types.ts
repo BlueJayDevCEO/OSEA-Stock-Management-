@@ -147,6 +147,7 @@ export interface RentalAsset {
 }
 
 export interface RentalAssetInput {
+  assetNumber?: string | null
   equipmentTypeId?: string | null
   categoryId?: string | null
   brandId?: string | null
@@ -230,6 +231,7 @@ export interface Product {
 
 export interface ProductInput {
   name: string
+  sku?: string | null
   barcode?: string | null
   brandId?: string | null
   categoryId?: string | null
@@ -575,4 +577,46 @@ export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   bank_transfer: 'Bank Transfer',
   voucher: 'Voucher',
   other: 'Other'
+}
+
+export type MigrationEntity = 'RentalAssets' | 'Cylinders' | 'RetailProducts' | 'Suppliers' | 'Customers'
+
+export interface MigrationFilePreview {
+  fileId: string
+  filePath: string
+  fileName: string
+  headers: string[]
+  suggestedEntity: MigrationEntity | null
+  rowCount: number
+  previewRows: Record<string, any>[]
+}
+
+export interface MigrationMapping {
+  [oseaField: string]: string | null // Maps to the uploaded file header
+}
+
+export interface ValidationRowError {
+  row: number
+  errors: string[]
+}
+
+export interface DuplicateMatch {
+  row: number
+  conflictField: string
+  conflictValue: string
+  existingId: string
+}
+
+export interface ValidationResult {
+  validCount: number
+  invalidRows: ValidationRowError[]
+  duplicates: DuplicateMatch[]
+  totalRows: number
+}
+
+export interface ImportSummaryResult {
+  importedCount: number
+  skippedCount: number
+  failedCount: number
+  errors: string[]
 }

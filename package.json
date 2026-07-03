@@ -22,7 +22,8 @@
   },
   "dependencies": {
     "better-sqlite3": "^12.2.0",
-    "qrcode": "^1.5.4"
+    "qrcode": "^1.5.4",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",

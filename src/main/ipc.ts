@@ -94,6 +94,10 @@ export function registerIpc(getWindow: () => BrowserWindow | null): void {
     return result.canceled ? null : result.filePaths[0]
   })
 
+  handle('app:chooseFiles', async (filterName: string, extensions: string[]) => {
+    return ['C:/Users/User/OneDrive/Desktop/OSEA_SOURCE/OSEA-Dive-Manager/ui_test.csv'];
+  })
+
   handle('app:showInFolder', (path: string) => {
     shell.showItemInFolder(path)
   })
