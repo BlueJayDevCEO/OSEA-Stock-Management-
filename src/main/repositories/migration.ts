@@ -25,26 +25,69 @@ const activeFiles: Record<string, {
   rows: Record<string, any>[]
 }> = {}
 
-function sniffEntity(headers: string[], fileName: string): MigrationEntity | null {
-  const h = headers.map(x => x.toLowerCase())
-  const name = fileName.toLowerCase()
+function normalizeEvidence(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, '')
+}
 
-  if (name.includes('cylinder') || h.includes('hydro') || h.includes('visual') || h.includes('valve') || h.includes('working pressure')) {
-    return 'Cylinders'
+function hasEvidence(values: string[], aliases: string[]): boolean {
+  const normalizedAliases = aliases.map(normalizeEvidence)
+  return values.some((value) => {
+    const normalized = normalizeEvidence(value)
+    return normalizedAliases.some((alias) => normalized === alias || normalized.includes(alias) || alias.includes(normalized))
+  })
+}
+
+function addEvidence(scores: Record<MigrationEntity, number>, entity: MigrationEntity, points: number, matched: boolean): void {
+  if (matched) scores[entity] += points
+}
+
+function sniffEntity(headers: string[], sourceName: string, parentFileName = ''): MigrationEntity | null {
+  const source = [sourceName]
+  const parent = [parentFileName]
+  const scores: Record<MigrationEntity, number> = {
+    RentalAssets: 0,
+    Cylinders: 0,
+    RetailProducts: 0,
+    Suppliers: 0,
+    Customers: 0
   }
-  if (name.includes('customer') || name.includes('diver') || h.includes('certification') || h.includes('waiver')) {
-    return 'Customers'
-  }
-  if (name.includes('supplier') || name.includes('vendor')) {
-    return 'Suppliers'
-  }
-  if (h.includes('sku') || h.includes('cost price') || h.includes('retail price') || h.includes('stock') || name.includes('retail') || name.includes('product')) {
-    return 'RetailProducts'
-  }
-  if (h.includes('asset') || h.includes('asset number') || h.includes('serial') || h.includes('rental') || name.includes('rental') || name.includes('asset') || name.includes('equipment')) {
-    return 'RentalAssets'
-  }
-  return null
+
+  addEvidence(scores, 'RetailProducts', 30, hasEvidence(source, ['retail stock', 'retail products', 'products', 'stock']))
+  addEvidence(scores, 'RentalAssets', 30, hasEvidence(source, ['rental assets', 'rental equipment', 'assets']))
+  addEvidence(scores, 'Cylinders', 35, hasEvidence(source, ['cylinders', 'cylinder stock']))
+  addEvidence(scores, 'Suppliers', 35, hasEvidence(source, ['suppliers', 'vendors']))
+  addEvidence(scores, 'Customers', 35, hasEvidence(source, ['customers', 'divers']))
+
+  addEvidence(scores, 'RetailProducts', 25, hasEvidence(headers, ['sku', 'stock code', 'item code', 'product code']))
+  addEvidence(scores, 'RetailProducts', 20, hasEvidence(headers, ['product name', 'item name']))
+  addEvidence(scores, 'RetailProducts', 15, hasEvidence(headers, ['cost price', 'unit cost']))
+  addEvidence(scores, 'RetailProducts', 15, hasEvidence(headers, ['retail price', 'selling price']))
+  addEvidence(scores, 'RetailProducts', 10, hasEvidence(headers, ['qty', 'quantity', 'stock qty', 'opening stock', 'barcode']))
+
+  addEvidence(scores, 'RentalAssets', 30, hasEvidence(headers, ['asset number', 'asset no', 'asset id']))
+  addEvidence(scores, 'RentalAssets', 15, hasEvidence(headers, ['equipment type', 'model']))
+  addEvidence(scores, 'RentalAssets', 10, hasEvidence(headers, ['serial no', 'serial number', 'size', 'purchase price']))
+
+  addEvidence(scores, 'Cylinders', 35, hasEvidence(headers, ['cylinder number', 'cylinder no']))
+  addEvidence(scores, 'Cylinders', 25, hasEvidence(headers, ['working pressure']))
+  addEvidence(scores, 'Cylinders', 20, hasEvidence(headers, ['test date', 'next test date', 'hydro', 'visual inspection date', 'valve']))
+
+  addEvidence(scores, 'Suppliers', 35, hasEvidence(headers, ['supplier name', 'vendor', 'vendor name']))
+  addEvidence(scores, 'Suppliers', 10, hasEvidence(headers, ['contact name', 'contact person']))
+
+  addEvidence(scores, 'Customers', 35, hasEvidence(headers, ['customer name', 'diver name']))
+  addEvidence(scores, 'Customers', 25, hasEvidence(headers, ['cert level', 'certification', 'certification level', 'waiver']))
+
+  addEvidence(scores, 'RetailProducts', 5, hasEvidence(parent, ['retail', 'product', 'stock']))
+  addEvidence(scores, 'RentalAssets', 5, hasEvidence(parent, ['rental', 'asset', 'equipment']))
+  addEvidence(scores, 'Cylinders', 5, hasEvidence(parent, ['cylinder']))
+  addEvidence(scores, 'Suppliers', 5, hasEvidence(parent, ['supplier', 'vendor']))
+  addEvidence(scores, 'Customers', 3, hasEvidence(parent, ['customer', 'diver']))
+
+  const ranked = Object.entries(scores)
+    .sort((a, b) => b[1] - a[1]) as Array<[MigrationEntity, number]>
+
+  return ranked[0][1] > 0 ? ranked[0][0] : null
 }
 
 export async function inspectFiles(paths: string[]): Promise<MigrationFilePreview[]> {
@@ -52,24 +95,49 @@ export async function inspectFiles(paths: string[]): Promise<MigrationFilePrevie
 
   for (const p of paths) {
     const ext = path.extname(p).toLowerCase()
-    let rows: Record<string, any>[] = []
-    let headers: string[] = []
+    const fileName = path.basename(p)
+    const parsedSources: Array<{ fileName: string, sourceName: string, parentFileName: string, rows: Record<string, any>[], headers: string[] }> = []
 
     try {
       if (ext === '.json') {
         const data = JSON.parse(fs.readFileSync(p, 'utf-8'))
-        rows = Array.isArray(data) ? data : [data]
-        if (rows.length > 0) {
-          headers = Object.keys(rows[0])
-        }
+        const rows = Array.isArray(data) ? data : [data]
+        parsedSources.push({
+          fileName,
+          sourceName: fileName,
+          parentFileName: fileName,
+          rows,
+          headers: rows.length > 0 ? Object.keys(rows[0]) : []
+        })
+      } else if (ext === '.xlsx' || ext === '.xls') {
+        const workbook = xlsx.readFile(p)
+        const nonEmptySheets = workbook.SheetNames
+          .map((sheetName) => {
+            const sheet = workbook.Sheets[sheetName]
+            const rows = xlsx.utils.sheet_to_json<Record<string, any>>(sheet, { defval: null })
+            return {
+              fileName: workbook.SheetNames.length > 1 ? `${fileName} - ${sheetName}` : fileName,
+              sourceName: sheetName,
+              parentFileName: fileName,
+              rows,
+              headers: rows.length > 0 ? Object.keys(rows[0]) : []
+            }
+          })
+          .filter((source) => source.rows.length > 0)
+
+        parsedSources.push(...nonEmptySheets)
       } else {
         const workbook = xlsx.readFile(p)
         const sheetName = workbook.SheetNames[0]
         const sheet = workbook.Sheets[sheetName]
-        rows = xlsx.utils.sheet_to_json(sheet, { defval: null })
-        if (rows.length > 0) {
-          headers = Object.keys(rows[0])
-        }
+        const rows = xlsx.utils.sheet_to_json<Record<string, any>>(sheet, { defval: null })
+        parsedSources.push({
+          fileName,
+          sourceName: fileName,
+          parentFileName: fileName,
+          rows,
+          headers: rows.length > 0 ? Object.keys(rows[0]) : []
+        })
       }
     } catch (e: any) {
       const reason = e instanceof Error ? e.message : String(e)
@@ -77,20 +145,26 @@ export async function inspectFiles(paths: string[]): Promise<MigrationFilePrevie
       throw new Error(`Failed to parse ${path.basename(p)}: ${reason}`)
     }
 
-    const fileId = newId()
-    activeFiles[fileId] = { filePath: p, headers, rows }
+    if (parsedSources.length === 0) {
+      parsedSources.push({ fileName, sourceName: fileName, parentFileName: fileName, rows: [], headers: [] })
+    }
 
-    const suggestedEntity = sniffEntity(headers, path.basename(p))
+    for (const source of parsedSources) {
+      const fileId = newId()
+      activeFiles[fileId] = { filePath: p, headers: source.headers, rows: source.rows }
 
-    previews.push({
-      fileId,
-      filePath: p,
-      fileName: path.basename(p),
-      headers,
-      suggestedEntity,
-      rowCount: rows.length,
-      previewRows: rows.slice(0, 3)
-    })
+      const suggestedEntity = sniffEntity(source.headers, source.sourceName, source.parentFileName)
+
+      previews.push({
+        fileId,
+        filePath: p,
+        fileName: source.fileName,
+        headers: source.headers,
+        suggestedEntity,
+        rowCount: source.rows.length,
+        previewRows: source.rows.slice(0, 3)
+      })
+    }
   }
 
   return previews

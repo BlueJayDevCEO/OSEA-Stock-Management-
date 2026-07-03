@@ -12,6 +12,7 @@ import * as pos from './repositories/purchaseOrders'
 import * as reports from './repositories/reports'
 import * as customFields from './repositories/customFields'
 import * as dataAdmin from './repositories/dataAdmin'
+import * as migration from './repositories/migration'
 import { seedDemoData } from './repositories/demoData'
 
 function ok<T>(data: T): Result<T> {
@@ -33,6 +34,46 @@ function handle(channel: string, fn: (...args: never[]) => unknown): void {
       return { ok: false, error: message } satisfies Result<never>
     }
   })
+}
+
+type OpenDialog = (
+  win: BrowserWindow,
+  options: Electron.OpenDialogOptions
+) => Promise<Electron.OpenDialogReturnValue>
+type IpcRegister = (channel: string, fn: (...args: never[]) => unknown) => void
+
+export function registerFilePickerIpc(
+  getWindow: () => BrowserWindow | null,
+  register: IpcRegister = handle,
+  openDialog: OpenDialog = (win, options) => dialog.showOpenDialog(win, options)
+): void {
+  register('app:chooseFile', async (filterName: string, extensions: string[]) => {
+    const win = getWindow()
+    if (!win) return null
+    const result = await openDialog(win, {
+      properties: ['openFile'],
+      filters: [{ name: filterName, extensions }]
+    })
+    return result.canceled ? null : result.filePaths[0]
+  })
+
+  register('app:chooseFiles', async (filterName: string, extensions: string[]) => {
+    const win = getWindow()
+    if (!win) return []
+    const testFiles = process.env['OSEA_TEST_CHOOSE_FILES']
+    if (testFiles) return testFiles.split(';').filter(Boolean)
+    const result = await openDialog(win, {
+      properties: ['openFile', 'multiSelections'],
+      filters: [{ name: filterName, extensions }]
+    })
+    return result.canceled ? [] : result.filePaths
+  })
+}
+
+export function registerMigrationIpc(register: IpcRegister = handle): void {
+  register('migration:inspectFiles', migration.inspectFiles)
+  register('migration:validateMapping', migration.validateMapping)
+  register('migration:importData', migration.importData)
 }
 
 function getStatus(): AppStatus {
@@ -84,19 +125,7 @@ export function registerIpc(getWindow: () => BrowserWindow | null): void {
     }
   )
 
-  handle('app:chooseFile', async (filterName: string, extensions: string[]) => {
-    const win = getWindow()
-    if (!win) return null
-    const result = await dialog.showOpenDialog(win, {
-      properties: ['openFile'],
-      filters: [{ name: filterName, extensions }]
-    })
-    return result.canceled ? null : result.filePaths[0]
-  })
-
-  handle('app:chooseFiles', async (filterName: string, extensions: string[]) => {
-    return ['C:/Users/User/OneDrive/Desktop/OSEA_SOURCE/OSEA-Dive-Manager/ui_test.csv'];
-  })
+  registerFilePickerIpc(getWindow)
 
   handle('app:showInFolder', (path: string) => {
     shell.showItemInFolder(path)
@@ -245,4 +274,7 @@ export function registerIpc(getWindow: () => BrowserWindow | null): void {
     }
     return { path: db.path, counts }
   })
+
+  // --- Data migration -------------------------------------------------------
+  registerMigrationIpc()
 }

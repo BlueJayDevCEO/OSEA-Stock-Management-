@@ -5,9 +5,84 @@ import { app } from 'electron'
 import { openDatabase, closeDatabase, getDb } from './db'
 import * as xlsx from 'xlsx'
 import { inspectFiles, validateMapping, importData } from './repositories/migration'
+import { registerFilePickerIpc, registerMigrationIpc } from './ipc'
+import { autoMapMigrationHeaders } from '../shared/migration'
+
+function assertMapping(actual: Record<string, string | null>, expected: Record<string, string>): void {
+  for (const [field, header] of Object.entries(expected)) {
+    if (actual[field] !== header) {
+      throw new Error(`Expected ${field} to map to "${header}", got "${actual[field] ?? ''}"`)
+    }
+  }
+}
+
+async function runIpcRegistrationTests() {
+  const handlers: Record<string, (...args: any[]) => unknown> = {}
+  const register = (channel: string, fn: (...args: never[]) => unknown) => {
+    handlers[channel] = fn as (...args: any[]) => unknown
+  }
+  const fakeWindow = {} as Electron.BrowserWindow
+
+  registerFilePickerIpc(
+    () => fakeWindow,
+    register,
+    async (_win, options) => {
+      if (!options.properties?.includes('multiSelections')) {
+        throw new Error('Multi-file picker did not request multiSelections')
+      }
+      if (options.filters?.[0]?.name !== 'Data Files') {
+        throw new Error('Multi-file picker filter name was not passed through')
+      }
+      const extensions = options.filters?.[0]?.extensions ?? []
+      for (const ext of ['csv', 'xlsx', 'xls', 'json']) {
+        if (!extensions.includes(ext)) {
+          throw new Error(`Multi-file picker missing ${ext} filter`)
+        }
+      }
+      return { canceled: false, filePaths: ['one.csv', 'two.xlsx'] }
+    }
+  )
+
+  if (!handlers['app:chooseFile'] || !handlers['app:chooseFiles']) {
+    throw new Error('File picker IPC registration failed')
+  }
+
+  const picked = await handlers['app:chooseFiles']('Data Files', ['csv', 'xlsx', 'xls', 'json'])
+  if (!Array.isArray(picked) || picked.length !== 2 || picked[1] !== 'two.xlsx') {
+    throw new Error('Multi-file picker did not return selected paths')
+  }
+
+  const cancelHandlers: Record<string, (...args: any[]) => unknown> = {}
+  registerFilePickerIpc(
+    () => fakeWindow,
+    (channel, fn) => {
+      cancelHandlers[channel] = fn as (...args: any[]) => unknown
+    },
+    async () => ({ canceled: true, filePaths: [] })
+  )
+
+  const canceledMulti = await cancelHandlers['app:chooseFiles']('Data Files', ['csv'])
+  const canceledSingle = await cancelHandlers['app:chooseFile']('Data Files', ['csv'])
+  if (!Array.isArray(canceledMulti) || canceledMulti.length !== 0 || canceledSingle !== null) {
+    throw new Error('File picker cancel behavior failed')
+  }
+
+  const migrationHandlers: Record<string, (...args: any[]) => unknown> = {}
+  registerMigrationIpc((channel, fn) => {
+    migrationHandlers[channel] = fn as (...args: any[]) => unknown
+  })
+  for (const channel of ['migration:inspectFiles', 'migration:validateMapping', 'migration:importData']) {
+    if (!migrationHandlers[channel]) {
+      throw new Error(`Missing migration IPC handler: ${channel}`)
+    }
+  }
+}
 
 export async function runMigrationTest() {
   console.log('--- Starting Migration Suite ---')
+  await runIpcRegistrationTests()
+  console.log('IPC picker and migration registration OK')
+
   const dir = mkdtempSync(join(tmpdir(), 'osea-migration-'))
   const dbPath = join(dir, 'test.db')
   openDatabase(dbPath)
@@ -18,6 +93,9 @@ export async function runMigrationTest() {
     const csvPath = join(dir, 'rental_assets.csv')
     const xlsxPath = join(dir, 'retail_products.xlsx')
     const cleanXlsxPath = join(dir, 'retail_products_clean.xlsx')
+    const multiSheetXlsxPath = join(dir, 'multi_sheet_stock.xlsx')
+    const customerStockPath = join(dir, 'customer_test_stock.xlsx')
+    const classificationPath = join(dir, 'classification_cases.xlsx')
     const jsonPath = join(dir, 'suppliers.json')
 
     writeFileSync(
@@ -41,6 +119,93 @@ export async function runMigrationTest() {
     xlsx.utils.book_append_sheet(cleanWb, cleanWs, 'Products')
     xlsx.writeFile(cleanWb, cleanXlsxPath)
 
+    const multiWb = xlsx.utils.book_new()
+    const multiWs1 = xlsx.utils.json_to_sheet([
+      { assetNumber: 'MS-A-001', model: 'BCD', serialNumber: 'BCD-1' }
+    ])
+    const multiWs2 = xlsx.utils.json_to_sheet([
+      { sku: 'MS-P-001', name: 'Snorkel', costPrice: 5, retailPrice: 15, stockQty: 3 }
+    ])
+    const emptySheet = xlsx.utils.aoa_to_sheet([])
+    xlsx.utils.book_append_sheet(multiWb, multiWs1, 'RentalAssets')
+    xlsx.utils.book_append_sheet(multiWb, emptySheet, 'Empty')
+    xlsx.utils.book_append_sheet(multiWb, multiWs2, 'RetailProducts')
+    xlsx.writeFile(multiWb, multiSheetXlsxPath)
+
+    const customerStockWb = xlsx.utils.book_new()
+    xlsx.utils.book_append_sheet(
+      customerStockWb,
+      xlsx.utils.json_to_sheet([
+        {
+          'Stock Code': 'STK-001',
+          'Product Name': 'Mask',
+          Brand: 'Scubapro',
+          Category: 'Masks',
+          Qty: 4,
+          'Cost Price': 10,
+          'Retail Price': 25,
+          Barcode: '123456'
+        }
+      ]),
+      'Retail Stock'
+    )
+    xlsx.utils.book_append_sheet(
+      customerStockWb,
+      xlsx.utils.json_to_sheet([
+        {
+          'Asset Number': 'RA-001',
+          'Equipment Type': 'BCD',
+          Brand: 'Aqualung',
+          Model: 'Pro',
+          'Serial No': 'SN-001',
+          Size: 'M',
+          'Purchase Price': 200
+        }
+      ]),
+      'Rental Assets'
+    )
+    xlsx.writeFile(customerStockWb, customerStockPath)
+
+    const classificationWb = xlsx.utils.book_new()
+    xlsx.utils.book_append_sheet(
+      classificationWb,
+      xlsx.utils.json_to_sheet([
+        {
+          'Cylinder Number': 'CYL-001',
+          'Serial Number': 'CYL-SN-001',
+          'Working Pressure': 232,
+          'Test Date': '2026-01-01',
+          'Next Test Date': '2027-01-01'
+        }
+      ]),
+      'Cylinder Sheet'
+    )
+    xlsx.utils.book_append_sheet(
+      classificationWb,
+      xlsx.utils.json_to_sheet([
+        {
+          'Supplier Name': 'Aqualung',
+          'Contact Name': 'Bob',
+          Email: 'bob@example.com',
+          Phone: '123'
+        }
+      ]),
+      'Supplier Sheet'
+    )
+    xlsx.utils.book_append_sheet(
+      classificationWb,
+      xlsx.utils.json_to_sheet([
+        {
+          'Customer Name': 'Jane Diver',
+          Email: 'jane@example.com',
+          Phone: '456',
+          'Cert Level': 'Advanced'
+        }
+      ]),
+      'Customer Sheet'
+    )
+    xlsx.writeFile(classificationWb, classificationPath)
+
     writeFileSync(
       jsonPath,
       JSON.stringify([
@@ -49,20 +214,51 @@ export async function runMigrationTest() {
       ])
     )
 
+    const rendererFlowHandlers: Record<string, (...args: any[]) => unknown> = {}
+    registerFilePickerIpc(
+      () => ({} as Electron.BrowserWindow),
+      (channel, fn) => {
+        rendererFlowHandlers[channel] = fn as (...args: any[]) => unknown
+      },
+      async () => ({ canceled: false, filePaths: [csvPath, jsonPath] })
+    )
+    const selectedPaths = await rendererFlowHandlers['app:chooseFiles']('Data Files', ['csv', 'xlsx', 'xls', 'json'])
+    if (!Array.isArray(selectedPaths) || selectedPaths.length !== 2) {
+      throw new Error('Selected paths did not return from file picker IPC')
+    }
+    const rendererPreviews = await inspectFiles(selectedPaths)
+    if (
+      rendererPreviews.length !== 2 ||
+      rendererPreviews[0].fileName !== 'rental_assets.csv' ||
+      rendererPreviews[1].fileName !== 'suppliers.json'
+    ) {
+      throw new Error('Selected paths did not reach migration inspection previews')
+    }
+
     const files = await inspectFiles([
       csvPath,
       xlsxPath,
       cleanXlsxPath,
+      multiSheetXlsxPath,
+      customerStockPath,
+      classificationPath,
       jsonPath
     ])
 
-    if (files.length !== 4) throw new Error('Expected 4 files')
+    if (files.length !== 11) throw new Error('Expected 11 migration previews, including non-empty workbook sheets')
 
     console.log('Files parsed successfully')
 
     const rentalFile = files.find(f => f.fileName === 'rental_assets.csv')!
     const productFile = files.find(f => f.fileName === 'retail_products.xlsx')!
     const cleanProductFile = files.find(f => f.fileName === 'retail_products_clean.xlsx')!
+    const multiRentalFile = files.find(f => f.fileName === 'multi_sheet_stock.xlsx - RentalAssets')!
+    const multiProductFile = files.find(f => f.fileName === 'multi_sheet_stock.xlsx - RetailProducts')!
+    const misleadingRetailFile = files.find(f => f.fileName === 'customer_test_stock.xlsx - Retail Stock')!
+    const misleadingRentalFile = files.find(f => f.fileName === 'customer_test_stock.xlsx - Rental Assets')!
+    const cylinderFile = files.find(f => f.fileName === 'classification_cases.xlsx - Cylinder Sheet')!
+    const classificationSupplierFile = files.find(f => f.fileName === 'classification_cases.xlsx - Supplier Sheet')!
+    const customerFile = files.find(f => f.fileName === 'classification_cases.xlsx - Customer Sheet')!
     const supplierFile = files.find(f => f.fileName === 'suppliers.json')!
 
     if (rentalFile.suggestedEntity !== 'RentalAssets') {
@@ -75,6 +271,34 @@ export async function runMigrationTest() {
 
     if (supplierFile.suggestedEntity !== 'Suppliers') {
       throw new Error('Entity sniffing failed for suppliers')
+    }
+
+    if (misleadingRetailFile.suggestedEntity !== 'RetailProducts') {
+      throw new Error('Misleading customer filename overrode retail sheet evidence')
+    }
+
+    if (misleadingRentalFile.suggestedEntity !== 'RentalAssets') {
+      throw new Error('Misleading customer filename overrode rental sheet evidence')
+    }
+
+    if (cylinderFile.suggestedEntity !== 'Cylinders') {
+      throw new Error('Entity sniffing failed for cylinders')
+    }
+
+    if (classificationSupplierFile.suggestedEntity !== 'Suppliers') {
+      throw new Error('Entity sniffing failed for supplier headers')
+    }
+
+    if (customerFile.suggestedEntity !== 'Customers') {
+      throw new Error('Entity sniffing failed for customer headers')
+    }
+
+    if (multiRentalFile.rowCount !== 1 || multiProductFile.rowCount !== 1) {
+      throw new Error('Multi-sheet workbook did not expose non-empty worksheets independently')
+    }
+
+    if (files.some(f => f.fileName === 'multi_sheet_stock.xlsx - Empty')) {
+      throw new Error('Empty workbook sheet should not create a migration preview')
     }
 
     const rentalMapping = {
@@ -95,6 +319,23 @@ export async function runMigrationTest() {
       name: 'vendor',
       contactName: 'contactName'
     }
+
+    assertMapping(autoMapMigrationHeaders('RetailProducts', misleadingRetailFile.headers), {
+      sku: 'Stock Code',
+      name: 'Product Name',
+      stockQty: 'Qty',
+      costPrice: 'Cost Price',
+      retailPrice: 'Retail Price',
+      barcode: 'Barcode'
+    })
+
+    assertMapping(autoMapMigrationHeaders('RentalAssets', misleadingRentalFile.headers), {
+      assetNumber: 'Asset Number',
+      model: 'Model',
+      serialNumber: 'Serial No',
+      size: 'Size',
+      purchasePrice: 'Purchase Price'
+    })
 
     const valid1 = await validateMapping(
       rentalFile.fileId,

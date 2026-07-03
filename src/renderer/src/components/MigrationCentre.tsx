@@ -1,46 +1,10 @@
 import { useState } from 'react'
 import { FileUp, CheckCircle, AlertTriangle, XCircle, ArrowRight, Play, ServerCrash } from 'lucide-react'
 import type { MigrationFilePreview, MigrationEntity, MigrationMapping, ValidationResult, ImportSummaryResult } from '@shared/types'
+import { autoMapMigrationHeaders, MIGRATION_ENTITY_FIELDS } from '@shared/migration'
 import { useApp } from '../lib/store'
 
 const ENTITIES: MigrationEntity[] = ['RentalAssets', 'Cylinders', 'RetailProducts', 'Suppliers', 'Customers']
-
-const ENTITY_FIELDS: Record<MigrationEntity, { key: string, label: string, required: boolean }[]> = {
-  RentalAssets: [
-    { key: 'assetNumber', label: 'Asset/Serial Number', required: true },
-    { key: 'model', label: 'Model', required: false },
-    { key: 'serialNumber', label: 'Manufacturer Serial', required: false },
-    { key: 'size', label: 'Size', required: false },
-    { key: 'purchasePrice', label: 'Purchase Price', required: false },
-    { key: 'notes', label: 'Notes', required: false }
-  ],
-  Cylinders: [
-    { key: 'assetNumber', label: 'Cylinder Number', required: true },
-    { key: 'workingPressure', label: 'Working Pressure', required: false },
-    { key: 'visualInspectionDate', label: 'Visual Date', required: false },
-    { key: 'hydroTestDate', label: 'Hydro Date', required: false }
-  ],
-  RetailProducts: [
-    { key: 'sku', label: 'SKU/Item Code', required: true },
-    { key: 'name', label: 'Product Name', required: true },
-    { key: 'barcode', label: 'Barcode', required: false },
-    { key: 'costPrice', label: 'Cost Price', required: false },
-    { key: 'retailPrice', label: 'Retail Price', required: false },
-    { key: 'stockQty', label: 'Opening Stock', required: false }
-  ],
-  Suppliers: [
-    { key: 'name', label: 'Supplier Name', required: true },
-    { key: 'contactName', label: 'Contact Name', required: false },
-    { key: 'email', label: 'Email', required: false },
-    { key: 'phone', label: 'Phone', required: false }
-  ],
-  Customers: [
-    { key: 'name', label: 'Customer Name', required: true },
-    { key: 'email', label: 'Email', required: false },
-    { key: 'phone', label: 'Phone', required: false },
-    { key: 'certificationLevel', label: 'Cert Level', required: false }
-  ]
-}
 
 export function MigrationCentre(): JSX.Element {
   const toast = useApp((s) => s.toast)
@@ -54,31 +18,28 @@ export function MigrationCentre(): JSX.Element {
   const [summaries, setSummaries] = useState<Record<string, ImportSummaryResult>>({})
 
   const pickFiles = async () => {
-    const paths = await window.osea.app.chooseFiles('Data Files', ['csv', 'xlsx', 'xls', 'json'])
-    if (!paths || paths.length === 0) return
+    try {
+      const paths = await window.osea.app.chooseFiles('Data Files', ['csv', 'xlsx', 'xls', 'json'])
+      if (!paths || paths.length === 0) return
 
-    const previews = await window.osea.migration.inspectFiles(paths)
-    setFiles(previews)
+      const previews = await window.osea.migration.inspectFiles(paths)
+      setFiles(previews)
 
-    const newEntities: Record<string, MigrationEntity> = {}
-    const newMappings: Record<string, MigrationMapping> = {}
+      const newEntities: Record<string, MigrationEntity> = {}
+      const newMappings: Record<string, MigrationMapping> = {}
 
-    previews.forEach(p => {
-      const ent = p.suggestedEntity || 'RentalAssets'
-      newEntities[p.fileId] = ent
-
-      const mapping: MigrationMapping = {}
-      ENTITY_FIELDS[ent].forEach(f => {
-        // simple auto map
-        const match = p.headers.find(h => h.toLowerCase().includes(f.key.toLowerCase()) || f.label.toLowerCase().includes(h.toLowerCase()))
-        if (match) mapping[f.key] = match
+      previews.forEach(p => {
+        const ent = p.suggestedEntity || 'RentalAssets'
+        newEntities[p.fileId] = ent
+        newMappings[p.fileId] = autoMapMigrationHeaders(ent, p.headers)
       })
-      newMappings[p.fileId] = mapping
-    })
 
-    setEntities(newEntities)
-    setMappings(newMappings)
-    setStep(2)
+      setEntities(newEntities)
+      setMappings(newMappings)
+      setStep(2)
+    } catch (e: any) {
+      toast('error', e.message || 'Could not inspect the selected files.')
+    }
   }
 
   const runValidation = async (fileId: string) => {
@@ -171,7 +132,7 @@ export function MigrationCentre(): JSX.Element {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <h4 className="text-sm font-semibold uppercase text-abyss-400">Column Mapping</h4>
-                {ENTITY_FIELDS[entities[f.fileId]].map(field => (
+                {MIGRATION_ENTITY_FIELDS[entities[f.fileId]].map(field => (
                   <div key={field.key} className="flex items-center justify-between text-sm">
                     <span className={field.required ? 'font-semibold' : ''}>{field.label}{field.required ? '*' : ''}</span>
                     <select
