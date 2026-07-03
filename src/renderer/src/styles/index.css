@@ -1,0 +1,110 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+  .dark {
+    color-scheme: dark;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-surface-light text-abyss-950 antialiased dark:bg-surface-dark dark:text-abyss-100;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'tnum';
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-abyss-300 dark:bg-abyss-800;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-abyss-400 dark:bg-abyss-700;
+  }
+
+  button {
+    -webkit-app-region: no-drag;
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-xl border border-abyss-200/70 bg-white shadow-card dark:border-abyss-800/60 dark:bg-surface-card dark:shadow-card-dark;
+  }
+
+  .input {
+    @apply w-full rounded-lg border border-abyss-300/80 bg-white px-3 py-2 text-sm text-abyss-950 outline-none transition-colors placeholder:text-abyss-400 focus:border-ocean-500 focus:ring-2 focus:ring-ocean-500/25 disabled:cursor-not-allowed disabled:opacity-60 dark:border-abyss-700 dark:bg-surface-raised dark:text-abyss-100 dark:placeholder:text-abyss-500;
+  }
+
+  .label {
+    @apply mb-1 block text-xs font-semibold uppercase tracking-wide text-abyss-500 dark:text-abyss-400;
+  }
+
+  .btn {
+    @apply inline-flex select-none items-center justify-center gap-2 whitespace-nowrap rounded-lg px-3.5 py-2 text-sm font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ocean-500/50 disabled:pointer-events-none disabled:opacity-50;
+  }
+
+  .btn-primary {
+    @apply btn bg-gradient-to-b from-ocean-500 to-ocean-600 text-white shadow-sm hover:from-ocean-400 hover:to-ocean-600 active:scale-[0.99];
+  }
+
+  .btn-secondary {
+    @apply btn border border-abyss-300/80 bg-white text-abyss-800 hover:bg-abyss-50 dark:border-abyss-700 dark:bg-surface-raised dark:text-abyss-100 dark:hover:bg-abyss-800/60;
+  }
+
+  .btn-ghost {
+    @apply btn text-abyss-600 hover:bg-abyss-100 dark:text-abyss-300 dark:hover:bg-abyss-800/60;
+  }
+
+  .btn-danger {
+    @apply btn bg-red-600 text-white hover:bg-red-500;
+  }
+
+  .table-head {
+    @apply sticky top-0 z-10 border-b border-abyss-200 bg-abyss-50/95 text-left text-xs font-semibold uppercase tracking-wider text-abyss-500 backdrop-blur dark:border-abyss-800 dark:bg-surface-raised/95 dark:text-abyss-400;
+  }
+
+  .nav-item {
+    @apply flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-abyss-500 transition-colors hover:bg-white/60 hover:text-abyss-900 dark:text-abyss-400 dark:hover:bg-abyss-800/50 dark:hover:text-abyss-100;
+  }
+
+  .nav-item-active {
+    @apply bg-white text-ocean-700 shadow-sm hover:bg-white dark:bg-abyss-800/80 dark:text-ocean-300 dark:hover:bg-abyss-800/80;
+  }
+}
+
+/* --- Label printing ------------------------------------------------------ */
+
+@media print {
+  body {
+    background: white !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .print-root {
+    position: absolute;
+    inset: 0;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+  @page {
+    margin: 0;
+  }
+}

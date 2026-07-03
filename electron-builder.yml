@@ -1,0 +1,47 @@
+appId: com.osea.divemanager
+productName: OSEA Dive Manager
+copyright: Copyright © 2026 OSEA Software
+
+directories:
+  buildResources: build
+  output: dist
+
+files:
+  - out/**
+  - package.json
+  - '!**/*.map'
+
+asarUnpack:
+  - '**/node_modules/better-sqlite3/**'
+
+extraResources:
+  - "docs/**"
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  artifactName: OSEA-Dive-Manager-Setup-${version}.${ext}
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
+  shortcutName: OSEA Dive Manager
+
+mac:
+  target:
+    - target: dmg
+      arch: [x64, arm64]
+  category: public.app-category.business
+  artifactName: OSEA-Dive-Manager-${version}-${arch}.${ext}
+
+linux:
+  target:
+    - AppImage
+    - deb
+  category: Office
+  artifactName: OSEA-Dive-Manager-${version}.${ext}
+
+npmRebuild: true
