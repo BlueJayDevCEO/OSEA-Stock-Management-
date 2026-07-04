@@ -16,6 +16,7 @@ import { PurchaseOrderDetailPage } from './pages/PurchaseOrderDetailPage'
 import { LabelsPage } from './pages/LabelsPage'
 import { ReportsPage } from './pages/ReportsPage'
 import { SettingsPage } from './pages/SettingsPage'
+import { ArchivePage } from './pages/ArchivePage'
 
 export default function App(): JSX.Element {
   const [status, setStatus] = useState<AppStatus | null>(null)
@@ -64,6 +65,7 @@ export default function App(): JSX.Element {
         <Route path="purchase-orders/:id" element={<PurchaseOrderDetailPage />} />
         <Route path="labels" element={<LabelsPage />} />
         <Route path="reports" element={<ReportsPage />} />
+        <Route path="archive" element={<ArchivePage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="*" element={<DashboardPage />} />
       </Route>

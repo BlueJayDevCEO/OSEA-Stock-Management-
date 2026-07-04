@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
+  Archive,
   ArrowLeft,
   CalendarClock,
   CheckCircle2,
@@ -212,6 +213,21 @@ export function RentalDetailPage(): JSX.Element {
     toast('success', 'Note added to the passport')
   }
 
+  const archiveAsset = async (): Promise<void> => {
+    if (!asset) return
+    if (asset.status === 'checked_out' || asset.status === 'reserved') {
+      toast('error', 'Return checked-out equipment or cancel the reservation before archiving.')
+      return
+    }
+    try {
+      await window.osea.assets.setArchived(asset.id, true)
+      toast('success', `${asset.assetNumber} moved to archive`)
+      navigate('/archive')
+    } catch (err) {
+      toast('error', err instanceof Error ? err.message : 'Could not archive rental equipment.')
+    }
+  }
+
   const setCustomValue = async (fieldId: string, value: string): Promise<void> => {
     if (!asset) return
     await window.osea.custom.setValue(fieldId, asset.id, value || null)
@@ -238,6 +254,11 @@ export function RentalDetailPage(): JSX.Element {
         subtitle={`${asset.equipmentTypeName ?? 'Equipment'} · Passport ${asset.assetNumber}`}
         actions={
           <>
+            {!asset.archived && (
+              <button className="btn-secondary" onClick={() => void archiveAsset()}>
+                <Archive size={15} /> Archive
+              </button>
+            )}
             <button
               className="btn-secondary"
               onClick={() => navigate(`/labels?kind=asset&ids=${asset.id}`)}

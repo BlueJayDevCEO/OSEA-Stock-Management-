@@ -1,6 +1,7 @@
 import { NavLink, Outlet } from 'react-router-dom'
 import {
   Anchor,
+  Archive,
   BarChart3,
   LayoutDashboard,
   Moon,
@@ -28,6 +29,7 @@ const NAV = [
   { to: '/purchase-orders', label: 'Purchase Orders', icon: Truck },
   { to: '/labels', label: 'Labels & QR', icon: QrCode },
   { to: '/reports', label: 'Reports', icon: BarChart3 },
+  { to: '/archive', label: 'Archive', icon: Archive },
   { to: '/settings', label: 'Settings', icon: Settings }
 ]
 

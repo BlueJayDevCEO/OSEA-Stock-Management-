@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { ArrowDownUp, ArrowLeft, Pencil, Printer } from 'lucide-react'
+import { Archive, ArrowDownUp, ArrowLeft, Pencil, Printer } from 'lucide-react'
 import type { CustomFieldValue, MovementType, Product, StockMovement } from '@shared/types'
 import { MOVEMENT_TYPE_LABELS } from '@shared/types'
 import { formatDateTime, money } from '@renderer/lib/format'
@@ -91,6 +91,17 @@ export function ProductDetailPage(): JSX.Element {
     }
   }
 
+  const archiveProduct = async (): Promise<void> => {
+    if (!product) return
+    try {
+      await window.osea.products.setArchived(product.id, true)
+      toast('success', `${product.sku} moved to archive`)
+      navigate('/archive')
+    } catch (err) {
+      toast('error', err instanceof Error ? err.message : 'Could not archive retail product.')
+    }
+  }
+
   const setCustomValue = async (fieldId: string, value: string): Promise<void> => {
     if (!product) return
     await window.osea.custom.setValue(fieldId, product.id, value || null)
@@ -115,6 +126,11 @@ export function ProductDetailPage(): JSX.Element {
         subtitle={`${product.brandName ? product.brandName + ' · ' : ''}SKU ${product.sku}`}
         actions={
           <>
+            {!product.archived && (
+              <button className="btn-secondary" onClick={() => void archiveProduct()}>
+                <Archive size={15} /> Archive
+              </button>
+            )}
             <button className="btn-secondary" onClick={() => navigate(`/labels?kind=product&ids=${product.id}`)}>
               <Printer size={15} /> Print label
             </button>
