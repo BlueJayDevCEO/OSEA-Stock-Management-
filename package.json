@@ -8,10 +8,10 @@
   "homepage": "https://osea.example",
   "license": "SEE LICENSE IN LICENSE.md",
   "scripts": {
-    "dev": "electron-vite dev",
-    "build": "electron-vite build",
+    "dev": "node api.js && electron-vite dev",
+    "build": "node api.js && electron-vite build",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
-    "start": "electron-vite preview",
+    "start": "node api.js && electron-vite preview",
     "smoke": "electron-vite build && electron out/main/index.js --smoke-test",
     "test:production-readiness": "electron-vite build && electron out/main/index.js --production-readiness-test",
     "icon": "electron scripts/makeIcon.js",
